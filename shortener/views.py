@@ -1,16 +1,17 @@
+import json
 from django.shortcuts import get_object_or_404, redirect
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse
 from django.core.cache import cache
 from django.db.models import F
 from django.views.decorators.http import require_http_methods
-import json
+from django.views.decorators.csrf import csrf_exempt
 
 from .models import ShortURL, ClickAnalytics
 
-# Cache duration set to 24 hours (in seconds)
-CACHE_TTL = 60 * 60 * 24
+CACHE_TTL = 60 * 60 * 24 
 
 
+@csrf_exempt  # <-- REQUIRED: Allows Postman to send POST requests without CSRF blocks
 @require_http_methods(["POST"])
 def create_short_url(request):
     """
@@ -21,13 +22,13 @@ def create_short_url(request):
         data = json.loads(request.body)
         original_url = data.get('url')
         if not original_url:
-            return HttpResponseBadRequest(JsonResponse({'error': 'URL is required'}))
+            return JsonResponse({'error': 'URL is required'}, status=400)
     except json.JSONDecodeError:
-        return HttpResponseBadRequest(JsonResponse({'error': 'Invalid JSON'}))
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
     short_obj = ShortURL.objects.create(original_url=original_url)
 
-    # Pre-warm Redis cache key immediately
+    # Pre-warm Redis cache key
     cache_key = f"url:{short_obj.short_code}"
     cache.set(cache_key, short_obj.original_url, timeout=CACHE_TTL)
 
@@ -46,27 +47,27 @@ def redirect_url(request, short_code):
     target_url = cache.get(cache_key)
 
     if target_url:
-        # CACHE HIT: Memory lookup succeeded, fetch object for log association
+        # Cache hit: Fetch object directly by short_code
         short_obj = ShortURL.objects.filter(short_code=short_code, is_active=True).first()
         if not short_obj:
             return JsonResponse({'error': 'URL inactive or missing'}, status=404)
     else:
-        # CACHE MISS: Query DB and update cache
+        # Cache miss: Query DB and populate cache
         short_obj = get_object_or_404(ShortURL, short_code=short_code, is_active=True)
         target_url = short_obj.original_url
         cache.set(cache_key, target_url, timeout=CACHE_TTL)
 
-    # 1. Atomic update prevents race conditions during high traffic
+    # Atomic click count increment
     ShortURL.objects.filter(pk=short_obj.pk).update(clicks_count=F('clicks_count') + 1)
 
-    # 2. Extract visitor metadata
+    # Extract visitor IP
     ip = request.META.get('HTTP_X_FORWARDED_FOR')
     if ip:
         ip = ip.split(',')[0].strip()
     else:
         ip = request.META.get('REMOTE_ADDR')
 
-    # Log visitor telemetry
+    # Log visitor analytics
     ClickAnalytics.objects.create(
         short_url=short_obj,
         ip_address=ip,
@@ -74,5 +75,4 @@ def redirect_url(request, short_code):
         referrer=request.META.get('HTTP_REFERER', '')
     )
 
-    # HTTP 302 ensures requests continue passing through the server for accurate analytics
     return redirect(target_url)

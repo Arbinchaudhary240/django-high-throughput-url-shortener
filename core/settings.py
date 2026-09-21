@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -25,7 +26,7 @@ SECRET_KEY = 'django-insecure-c*(d+ayc_7j@($q4$y9d#$4sitm3uxlv67gnm06i8n4=!&tw8f
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '0.0.0.0']
 
 
 # Application definition
@@ -40,10 +41,12 @@ INSTALLED_APPS = [
     "shortener",
 ]
 
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/1')
+
 CACHES = {
     "default" : {
         "BACKEND" : "django.core.cache.backends.redis.RedisCache",
-        "LOCATION" : "redis://127.0.0.1:6379",
+        "LOCATION" : REDIS_URL,
     }
 }
 
@@ -133,3 +136,5 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
