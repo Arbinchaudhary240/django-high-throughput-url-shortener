@@ -29,35 +29,34 @@ The primary bottleneck in redirection services is database read performance unde
 * Python 3.10+
 * Redis Server (running locally or via Docker)
 
-1. **Clone the repository and setup virtual environment**
+1. **Clone the repository**
 
-```bash
-git clone [https://github.com/Arbinchaudhary240/django-high-throughput-url-shortener.git](https://github.com/Arbinchaudhary240/django-high-throughput-url-shortener.git)
-cd django-high-throughput-url-shortener
+   ```bash
+   git clone https://github.com/Arbinchaudhary240/django-high-throughput-url-shortener.git
+   cd django-high-throughput-url-shortener
 
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-2. **Install dependencies**
+2. **Create a virtual environment**
 
-```bash
-pip install django redis
+    ```bash
+    python3 -m venv .vemv
+    source env/bin/activate  # On Windows use `.\.venv\Scripts\activate`
 
-3. **Run Migrations**
+3. **Install dependencies**
 
-```bash
-python manage.py makemigrations
-python manage.py migrate
+    ```bash
+    pip install -r requirements.txt
 
-4. **Start Redis**
-if using docker
+4. **Set up the database**
 
-```bash
-docker run -d -p 6379:6379 redis:alpine
+    ```bash
+    python manage.py makemigrations
+    python manage.py migrate
 
-5. **Launch Development Server**
+5. Run the development server
 
-```bash
-python manage.py runserver
+    ```bash
+    python manage.py runserver
+
 
 App will be available at http://127.0.0.1:8000/.
