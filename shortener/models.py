@@ -19,16 +19,22 @@ class ShortURL(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
-
     clicks_count = models.PositiveIntegerField(default=0)
-
     is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.short_code} -> {self.original_url[:30]}"
+        code = self.short_code or "Unassigned"
+
+        if not self.original_url:
+            return f"{code} -> [No URL]"
+    
+        url = self.original_url
+        truncated_url = f"{url[:27]}..." if len(url) > 30 else url
+
+        return f"{code} -> {truncated_url}"
 
 
 class ClickAnalytics(models.Model):
@@ -39,7 +45,6 @@ class ClickAnalytics(models.Model):
     )
 
     clicked_at = models.DateTimeField(auto_now_add=True)
-
     ip_address = models.GenericIPAddressField(
         null=True,
         blank=True
