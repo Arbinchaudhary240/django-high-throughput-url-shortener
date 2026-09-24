@@ -1,42 +1,43 @@
-import json
 from django.shortcuts import get_object_or_404, redirect
 from django.http import JsonResponse
 from django.core.cache import cache
 from django.db.models import F
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
 
 from .models import ShortURL, ClickAnalytics
+from .serializers import ShortURLSerializer
 
-CACHE_TTL = 60 * 60 * 24 
+CACHE_TTL = 60 * 60 * 24  #cache time limit 24 hrs in sec.
 
 
-@csrf_exempt  # <-- REQUIRED: Allows Postman to send POST requests without CSRF blocks
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+
+
 def create_short_url(request):
     """
     API endpoint to generate a shortened URL.
     Payload: {"url": "https://example.com/long-url"}
     """
-    try:
-        data = json.loads(request.body)
-        original_url = data.get('url')
-        if not original_url:
-            return JsonResponse({'error': 'URL is required'}, status=400)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    serializer = ShortURLSerializer(data={'original_url': request.data.get('url')})
+    serializer.is_valid(raise_exception=True)
 
-    short_obj = ShortURL.objects.create(original_url=original_url)
+    saved_link = serializer.save()
 
     # Pre-warm Redis cache key
-    cache_key = f"url:{short_obj.short_code}"
-    cache.set(cache_key, short_obj.original_url, timeout=CACHE_TTL)
+    cache_key = f"url:{saved_link.short_code}"
+    cache.set(cache_key, saved_link.original_url, timeout=CACHE_TTL)
 
-    return JsonResponse({
-        'short_code': short_obj.short_code,
-        'original_url': short_obj.original_url,
-        'short_url': request.build_absolute_uri(f'/r/{short_obj.short_code}')
-    }, status=201)
+    full_short_url = request.build_absolute_uri(f'/r/{saved_link.short_code}')
+    return Response({
+        "short_code": saved_link.short_code,
+        "original_url": saved_link.original_url,
+        'short_url': full_short_url
+    }, status=status.HTTP_201_CREATED)
 
 
 def redirect_url(request, short_code):
@@ -48,29 +49,29 @@ def redirect_url(request, short_code):
 
     if target_url:
         # Cache hit: Fetch object directly by short_code
-        short_obj = ShortURL.objects.filter(short_code=short_code, is_active=True).first()
-        if not short_obj:
+        url_code = ShortURL.objects.filter(short_code=short_code, is_active=True).first()
+        if not url_code:
             return JsonResponse({'error': 'URL inactive or missing'}, status=404)
     else:
         # Cache miss: Query DB and populate cache
-        short_obj = get_object_or_404(ShortURL, short_code=short_code, is_active=True)
-        target_url = short_obj.original_url
+        url_code = get_object_or_404(ShortURL, short_code=short_code, is_active=True)
+        target_url = url_code.original_url
         cache.set(cache_key, target_url, timeout=CACHE_TTL)
 
-    # Atomic click count increment
-    ShortURL.objects.filter(pk=short_obj.pk).update(clicks_count=F('clicks_count') + 1)
+    #increase the click count by 1
+    ShortURL.objects.filter(pk=url_code.pk).update(clicks_count=F('clicks_count') + 1)
 
     # Extract visitor IP
     ip = request.META.get('HTTP_X_FORWARDED_FOR')
     if ip:
-        ip = ip.split(',')[0].strip()
+        visitor_ip = ip.split(',')[0].strip()
     else:
-        ip = request.META.get('REMOTE_ADDR')
+        visitor_ip = request.META.get('REMOTE_ADDR')
 
     # Log visitor analytics
     ClickAnalytics.objects.create(
-        short_url=short_obj,
-        ip_address=ip,
+        short_url=url_code,
+        ip_address=visitor_ip,
         user_agent=request.META.get('HTTP_USER_AGENT', ''),
         referrer=request.META.get('HTTP_REFERER', '')
     )
