@@ -11,15 +11,18 @@ class ShortURLSerializer(serializers.ModelSerializer):
         if parsed_url.scheme.lower() not in {'http', 'https'}:
             raise serializers.ValidationError('Only HTTP and HTTPS URLs are allowed.')
 
-        if not parsed_url.netloc or not parsed_url.hostname:
-            raise serializers.ValidationError('The URL must include a valid hostname.')
-
         try:
+            hostname = parsed_url.hostname
             parsed_url.port
         except ValueError as error:
             raise serializers.ValidationError(
-                'The URL contains an invalid port.'
+                'The URL contains an invalid host or port.'
             ) from error
+
+        if not parsed_url.netloc or not hostname:
+            raise serializers.ValidationError(
+                'The URL must include a valid hostname.'
+            )
 
         if parsed_url.username or parsed_url.password:
             raise serializers.ValidationError(
