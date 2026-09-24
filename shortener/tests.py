@@ -2,7 +2,9 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.core.cache import cache
 from django.db.models import F
+from django.db import IntegrityError
 from shortener.models import ShortURL, ClickAnalytics, generate_short_code
+from unittest.mock import patch
 import json
 
 
@@ -46,6 +48,65 @@ class URLShortenerTests(TestCase):
         
         cached_url = cache.get(f"url:{data['short_code']}")
         self.assertEqual(cached_url, 'https://django-project.com')
+
+    def test_create_short_url_reuses_existing_active_url(self):
+        """Posting an active URL twice returns the same short code."""
+        url = reverse('create_short_url')
+        payload = {'url': 'https://django-project.com'}
+
+        first_response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        second_response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(second_response.status_code, 201)
+        self.assertEqual(
+            first_response.json()['short_code'],
+            second_response.json()['short_code'],
+        )
+        self.assertEqual(
+            ShortURL.objects.filter(original_url=payload['url']).count(),
+            1,
+        )
+
+    def test_create_short_url_retries_after_code_collision(self):
+        """A short-code collision is retried instead of returning an error."""
+        url = reverse('create_short_url')
+        payload = {'url': 'https://new.example.com'}
+        real_create = ShortURL.objects.create
+        create_calls = 0
+
+        def create_with_collision(**kwargs):
+            nonlocal create_calls
+            create_calls += 1
+            if create_calls == 1:
+                raise IntegrityError('short_code collision')
+            return real_create(**kwargs)
+
+        with patch.object(
+            ShortURL.objects,
+            'create',
+            side_effect=create_with_collision,
+        ):
+            response = self.client.post(
+                url,
+                data=json.dumps(payload),
+                content_type='application/json'
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(create_calls, 2)
+        self.assertEqual(
+            ShortURL.objects.filter(original_url=payload['url']).count(),
+            1,
+        )
 
     def test_create_short_url_api_invalid_json(self):
         """Checks the api handle the bad request and json"""

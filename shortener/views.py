@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404, redirect
 from django.http import JsonResponse
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.db.models import F
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
@@ -11,6 +12,7 @@ from .models import ShortURL, ClickAnalytics
 from .serializers import ShortURLSerializer
 
 CACHE_TTL = 60 * 60 * 24  #cache time limit 24 hrs in sec.
+MAX_CREATE_ATTEMPTS = 5
 
 
 @api_view(['POST'])
@@ -23,10 +25,22 @@ def create_short_url(request):
     API endpoint to generate a shortened URL.
     Payload: {"url": "https://example.com/long-url"}
     """
-    serializer = ShortURLSerializer(data={'original_url': request.data.get('url')})
-    serializer.is_valid(raise_exception=True)
+    original_url = request.data.get('url')
+    saved_link = ShortURL.objects.filter(
+        original_url=original_url,
+        is_active=True,
+    ).first()
 
-    saved_link = serializer.save()
+    if saved_link is None:
+        for attempt in range(MAX_CREATE_ATTEMPTS):
+            serializer = ShortURLSerializer(data={'original_url': original_url})
+            serializer.is_valid(raise_exception=True)
+            try:
+                saved_link = serializer.save()
+                break
+            except IntegrityError:
+                if attempt == MAX_CREATE_ATTEMPTS - 1:
+                    raise
 
     # Pre-warm Redis cache key
     cache_key = f"url:{saved_link.short_code}"
