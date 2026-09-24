@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 import string
 import secrets
 
@@ -24,6 +25,13 @@ class ShortURL(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['original_url'],
+                condition=Q(is_active=True),
+                name='unique_active_original_url',
+            ),
+        ]
 
     def __str__(self):
         code = self.short_code or "Unassigned"

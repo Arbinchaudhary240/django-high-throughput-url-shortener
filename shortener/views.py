@@ -39,6 +39,12 @@ def create_short_url(request):
                 saved_link = serializer.save()
                 break
             except IntegrityError:
+                saved_link = ShortURL.objects.filter(
+                    original_url=original_url,
+                    is_active=True,
+                ).first()
+                if saved_link is not None:
+                    break
                 if attempt == MAX_CREATE_ATTEMPTS - 1:
                     raise
 

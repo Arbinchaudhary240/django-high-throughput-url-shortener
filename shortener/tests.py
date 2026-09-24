@@ -1,6 +1,7 @@
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import F
 from django.db import IntegrityError
 from shortener.models import ShortURL, ClickAnalytics, generate_short_code
@@ -75,6 +76,18 @@ class URLShortenerTests(TestCase):
             ShortURL.objects.filter(original_url=payload['url']).count(),
             1,
         )
+
+    def test_active_original_url_is_unique(self):
+        """The database prevents duplicate active URLs."""
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ShortURL.objects.create(original_url=self.original_url)
+
+        inactive_link = ShortURL.objects.create(
+            original_url=self.original_url,
+            is_active=False,
+        )
+        self.assertFalse(inactive_link.is_active)
 
     def test_create_short_url_retries_after_code_collision(self):
         """A short-code collision is retried instead of returning an error."""
