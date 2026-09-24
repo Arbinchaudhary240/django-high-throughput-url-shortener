@@ -146,6 +146,25 @@ class URLShortenerTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_create_short_url_rejects_unsafe_urls(self):
+        """Only HTTP and HTTPS URLs with valid hosts are accepted."""
+        url = reverse('create_short_url')
+        invalid_urls = [
+            'javascript:alert(1)',
+            'ftp://example.com/file.txt',
+            'https:///missing-host',
+            'https://user:password@example.com/path',
+            'https://example.com:invalid/path',
+        ]
+
+        for invalid_url in invalid_urls:
+            response = self.client.post(
+                url,
+                data=json.dumps({'url': invalid_url}),
+                content_type='application/json'
+            )
+            self.assertEqual(response.status_code, 400, invalid_url)
+
     def test_redirection_cache_miss_populates_cache(self):
         """Test that a cache miss retrieves the URL from DB and writes it to Redis cache."""
         cache_key = f"url:{self.short_url_obj.short_code}"
