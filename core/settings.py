@@ -42,6 +42,15 @@ INSTALLED_APPS = [
     "shortener",
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '5/minute',
+    },
+}
+
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/1')
 
 CACHES = {

@@ -108,6 +108,21 @@ class URLShortenerTests(TestCase):
             1,
         )
 
+    def test_create_short_url_rate_limits_anonymous_requests(self):
+        """Anonymous clients receive 429 after five requests per minute."""
+        url = reverse('create_short_url')
+        responses = []
+
+        for request_number in range(6):
+            responses.append(self.client.post(
+                url,
+                data=json.dumps({'url': f'https://example.com/{request_number}'}),
+                content_type='application/json'
+            ))
+
+        self.assertEqual([response.status_code for response in responses[:5]], [201] * 5)
+        self.assertEqual(responses[5].status_code, 429)
+
     def test_create_short_url_api_invalid_json(self):
         """Checks the api handle the bad request and json"""
         url = reverse('create_short_url')
