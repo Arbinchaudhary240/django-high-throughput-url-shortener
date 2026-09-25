@@ -85,18 +85,25 @@ def create_short_url(request):
     
     # Pre-warm Redis cache key or creating redis key
     cache_key = f"url:{saved_link.short_code}"
-    # storing original url in redis
-    cache.set(cache_key, saved_link.original_url, timeout=CACHE_TTL)
 
+    try:
+        # storing original url in redis
+        cache.set(cache_key, saved_link.original_url, timeout=CACHE_TTL)
+
+    except Exception:
+        logger.exception(
+            "Redis cache update failed.",
+            saved_link.short_code,
+        )
     #combinig the current req domain and short code 
-    full_short_url = request.build_absolute_uri(f'/r/{saved_link.short_code}')
+    full_short_url = request.build_absolute_uri(f"/r/{saved_link.short_code}")
 
-    response_status = status.HTTP_201_CREATED if is_created else status.HTTP_200_OK
     return Response({
         "short_code": saved_link.short_code,
         "original_url": saved_link.original_url,
         'short_url': full_short_url
-    }, status=response_status)
+    },status=(status.HTTP_201_CREATED if is_created else status.HTTP_200_OK),
+    )
 
 
 def redirect_url(request, short_code):
