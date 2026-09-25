@@ -26,10 +26,19 @@ def create_short_url(request):
     Payload: {"url": "https://example.com/long-url"}
     """
     original_url = request.data.get('url')
+
+    if not original_url:
+        return Response(
+            {"detail": "URL is not required."}
+        )
+
+    #search in existing record if active short url already exist
     saved_link = ShortURL.objects.filter(
         original_url=original_url,
         is_active=True,
     ).first()
+
+    is_created = False
 
     if saved_link is None:
         for attempt in range(MAX_CREATE_ATTEMPTS):
@@ -39,25 +48,30 @@ def create_short_url(request):
                 saved_link = serializer.save()
                 break
             except IntegrityError:
+                # checks the existing record for using after integrity error 
                 saved_link = ShortURL.objects.filter(
                     original_url=original_url,
                     is_active=True,
                 ).first()
-                if saved_link is not None:
+                if saved_link is not None:  #if found and stored in saved_link and saved_link is not none
                     break
                 if attempt == MAX_CREATE_ATTEMPTS - 1:
                     raise
 
-    # Pre-warm Redis cache key
+    # Pre-warm Redis cache key or creating redis key
     cache_key = f"url:{saved_link.short_code}"
+    # storing original url in redis
     cache.set(cache_key, saved_link.original_url, timeout=CACHE_TTL)
 
+    #combinig the current req domain and short code 
     full_short_url = request.build_absolute_uri(f'/r/{saved_link.short_code}')
+
+    response_status = status.HTTP_201_CREATED if is_created else status.HTTP_200_OK
     return Response({
         "short_code": saved_link.short_code,
         "original_url": saved_link.original_url,
         'short_url': full_short_url
-    }, status=status.HTTP_201_CREATED)
+    }, status=response_status)
 
 
 def redirect_url(request, short_code):
