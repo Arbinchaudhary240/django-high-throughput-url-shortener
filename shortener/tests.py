@@ -32,23 +32,48 @@ class URLShortenerTests(TestCase):
         self.assertNotEqual(code1, code2)
 
     def test_create_short_url_api_success(self):
-        """Ceating a shortened URL via the POST API endpoint."""
+    # Create a shortened URL via the POST API endpoint.
         url = reverse('create_short_url')
         payload = {'url': 'https://django-project.com'}
-        
+
         response = self.client.post(
-            url, 
-            data=json.dumps(payload), 
+            url,
+            data=json.dumps(payload),
             content_type='application/json'
         )
-        
+
         self.assertEqual(response.status_code, 201)
+
         data = response.json()
+
         self.assertIn('short_code', data)
-        self.assertEqual(data['original_url'], 'https://django-project.com')
-        
-        cached_url = cache.get(f"url:{data['short_code']}")
-        self.assertEqual(cached_url, 'https://django-project.com')
+        self.assertEqual(
+            data['original_url'],
+            'https://django-project.com'
+        )
+
+        # Get the created ShortURL from the database
+        short_url = ShortURL.objects.get(
+            short_code=data['short_code']
+        )
+
+        # Redis key used by create_short_url()
+        cache_key = f"url:{short_url.short_code}"
+
+        # Check the cache contents
+        cached_data = cache.get(cache_key)
+
+        self.assertIsNotNone(cached_data)
+
+        self.assertEqual(
+            cached_data["id"],
+            short_url.pk,
+        )
+
+        self.assertEqual(
+            cached_data["original_url"],
+            'https://django-project.com',
+        )
 
     def test_create_short_url_reuses_existing_active_url(self):
         """Posting an active URL twice returns the same short code."""
@@ -178,13 +203,28 @@ class URLShortenerTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, self.original_url)
         
-       
-        self.assertEqual(cache.get(cache_key), self.original_url)
+        cached_data = cache.get(cache_key)
+
+        self.assertEqual(
+            cached_data["id"],
+            self.short_url_obj.pk,
+        )
+
+        self.assertEqual(
+            cached_data["original_url"],
+            self.original_url,
+        )
 
     def test_redirection_cache_hit(self):
         """Test that a cache hit bypasses DB fetch for target URL."""
         cache_key = f"url:{self.short_url_obj.short_code}"
-        cache.set(cache_key, self.original_url, timeout=3600)
+        cache.set(
+            cache_key,
+            {
+                "id": self.short_url_obj.pk,
+                "original_url": self.original_url,
+            },
+            timeout=3600)
         
         redirect_url = reverse('redirect_url', kwargs={'short_code': self.short_url_obj.short_code})
         response = self.client.get(redirect_url)
