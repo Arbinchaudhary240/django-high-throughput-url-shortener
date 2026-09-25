@@ -67,7 +67,7 @@ class URLShortenerTests(TestCase):
         )
 
         self.assertEqual(first_response.status_code, 201)
-        self.assertEqual(second_response.status_code, 201)
+        self.assertEqual(second_response.status_code, 200)
         self.assertEqual(
             first_response.json()['short_code'],
             second_response.json()['short_code'],

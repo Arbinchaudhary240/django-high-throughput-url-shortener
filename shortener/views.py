@@ -1,18 +1,20 @@
 from django.shortcuts import get_object_or_404, redirect
 from django.http import JsonResponse
 from django.core.cache import cache
-from django.db import IntegrityError
+from django.db import IntegrityError ,transaction
 from django.db.models import F
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+import logging
 
 from .models import ShortURL, ClickAnalytics
 from .serializers import ShortURLSerializer
 
 CACHE_TTL = 60 * 60 * 24  #cache time limit 24 hrs in sec.
 MAX_CREATE_ATTEMPTS = 5
+logger = logging.getLogger(__name__)
 
 
 @api_view(['POST'])
@@ -41,21 +43,38 @@ def create_short_url(request):
     is_created = False
 
     if saved_link is None:
+        # Validating the input url once.
+        serializer = ShortURLSerializer(data={'original_url': original_url})
+        serializer.is_valid(raise_exception=True)
+
         for attempt in range(MAX_CREATE_ATTEMPTS):
-            serializer = ShortURLSerializer(data={'original_url': original_url})
-            serializer.is_valid(raise_exception=True)
+            
             try:
-                saved_link = serializer.save()
+                with transaction.atomic():
+                    saved_link = serializer.save()
+
+                is_created = True
                 break
+
             except IntegrityError:
                 # checks the existing record for using after integrity error 
                 saved_link = ShortURL.objects.filter(
                     original_url=original_url,
                     is_active=True,
                 ).first()
+
                 if saved_link is not None:  #if found and stored in saved_link and saved_link is not none
                     break
+
+                logger.warning(
+                    "Short URL creation conflict. "
+                    "Attempt %s/%s",
+                    attempt + 1,
+                    MAX_CREATE_ATTEMPTS,
+                )
+
                 if attempt == MAX_CREATE_ATTEMPTS - 1:
+                    logger.exception("Failed to create short url after retries.")
                     raise
 
     # Pre-warm Redis cache key or creating redis key
