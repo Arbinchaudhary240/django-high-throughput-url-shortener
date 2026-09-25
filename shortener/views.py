@@ -77,6 +77,12 @@ def create_short_url(request):
                     logger.exception("Failed to create short url after retries.")
                     raise
 
+    if saved_link is None:
+        return Response(
+            {"detail": "Unable to create short url."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    
     # Pre-warm Redis cache key or creating redis key
     cache_key = f"url:{saved_link.short_code}"
     # storing original url in redis
