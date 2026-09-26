@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 import logging
+from .cache import get_url_cache_key
 
 from .models import ShortURL, ClickAnalytics
 from .serializers import ShortURLSerializer
@@ -84,7 +85,7 @@ def create_short_url(request):
         )
     
     # Pre-warm Redis cache key or creating redis key
-    cache_key = f"url:{saved_link.short_code}"
+    cache_key = get_url_cache_key(saved_link.short_code)
 
     try:
         # storing original url in redis
@@ -149,12 +150,20 @@ def redirect_url(request, short_code):
         visitor_ip = request.META.get('REMOTE_ADDR')
 
     with transaction.atomic():
-        ShortURL.objects.filter(
+        updated = ShortURL.objects.filter(
             pk=short_url_id,
             is_active=True,
         ).update(
             clicks_count=F("clicks_count") + 1
         )
+
+        if updated == 0:
+            cache.delete(cache_key)
+            return JsonResponse(
+                {"error": "URL inactive or missing"},
+                status=404,
+            )
+        
         # Log visitor analytics
         ClickAnalytics.objects.create(
             short_url_id=short_url_id,

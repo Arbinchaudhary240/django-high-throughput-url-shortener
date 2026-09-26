@@ -251,3 +251,49 @@ class URLShortenerTests(TestCase):
         latest_analytics = ClickAnalytics.objects.filter(short_url=self.short_url_obj).first()
         self.assertEqual(latest_analytics.user_agent, 'TestAgent/1.0')
         self.assertEqual(latest_analytics.referrer, 'https://google.com')
+
+
+    def test_cache_is_invalidated_when_url_is_deactivated(self):
+        cache_key = f"url:{self.short_url_obj.short_code}"
+
+        cache.set(
+            cache_key,
+            {
+                "id": self.short_url_obj.pk,
+                "original_url": self.original_url,
+            },
+            timeout=3600,
+        )
+
+        self.short_url_obj.is_active = False
+        self.short_url_obj.save(update_fields=["is_active"])
+
+        cache.delete(cache_key)
+
+        self.assertIsNone(cache.get(cache_key))
+
+
+    def test_redirect_rejects_stale_cache_for_inactive_url(self):
+        cache_key = f"url:{self.short_url_obj.short_code}"
+
+        cache.set(
+            cache_key,
+            {
+                "id": self.short_url_obj.pk,
+                "original_url": self.original_url,
+            },
+            timeout=3600
+        )
+
+        self.short_url_obj.is_active = False
+        self.short_url_obj.save(update_fields=["is_active"])
+
+        redirect_url = reverse(
+            "redirect_url",
+            kwargs={"short_code": self.short_url_obj.short_code},
+        )
+
+        response = self.client.get(redirect_url)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIsNone(cache.get(cache_key))
