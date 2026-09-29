@@ -32,7 +32,8 @@ def create_short_url(request):
 
     if not original_url:
         return Response(
-            {"detail": "URL is not required."}
+            {"detail": "URL is required."},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     #search in existing record if active short url already exist

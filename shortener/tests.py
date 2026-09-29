@@ -75,6 +75,16 @@ class URLShortenerTests(TestCase):
             'https://django-project.com',
         )
 
+    def test_create_short_url_requires_url(self):
+        response = self.client.post(
+            reverse('create_short_url'),
+            data=json.dumps({}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {'detail': 'URL is required.'})
+
     def test_create_short_url_reuses_existing_active_url(self):
         """Posting an active URL twice returns the same short code."""
         url = reverse('create_short_url')
